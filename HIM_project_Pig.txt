@@ -1,0 +1,83 @@
+- download files:
+
+wget -O rate-puf_2016.zip http://download.cms.gov/marketplace-puf/2016/rate-puf.zip
+
+==================================================================================
+
+- Unzip files:
+
+unzip rate-puf_2016.zip
+
+(to rename "optional")
+mv Rate_PUF.csv Rate_PUF_2016.csv 
+
+==================================================================================
+
+- for making sample:
+
+head -n 150 Rate_PUF_2016.csv > Rate_PUF_2016_Sample.csv
+
+==================================================================================
+
+- uploading files to HDFS:
+
+hdfs dfs -mkdir projectfile
+hdfs dfs -ls
+hdfs dfs -put Rate_PUF_2016_Sample.csv projectfile
+hdfs dfs -ls projectfile
+
+==================================================================================
+
+- creating a relation in pig from .csv file (using CSVExcelStorage class to handle csv format; for more info https://pig.apache.org/docs/r0.12.0/api/org/apache/pig/piggybank/storage/CSVExcelStorage.html):
+
+Rate_PUF_2016_Sample = LOAD 'projectfile/Rate_PUF_2016_Sample.csv'
+            USING org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'NOCHANGE', 'SKIP_INPUT_HEADER')
+            AS (BusinessYear: int, StateCode: chararray, IssuerId: chararray, SourceName: chararray, VersionNum: chararray, ImportDate: chararray, IssuerId2: chararray, FederalTIN: chararray, RateEffectiveDate: chararray, RateExpirationDate: chararray, PlanId: chararray, RatingAreaId: chararray, Tobacco: chararray, Age: chararray, IndividualRate: int, IndividualTobaccoRate: int, Couple: int, PrimarySubscriberAndOneDependent: int, PrimarySubscriberAndTwoDependents: int, PrimarySubscriberAndThreeOrMoreDependents: int, CoupleAndOneDependent: int, CoupleAndTwoDependents: int, CoupleAndThreeOrMoreDependents: int, RowNumber: chararray);
+
+DUMP Rate_PUF_2016_Sample;
+
+(optional)
+DESCRIBE Rate_PUF_2016_Sample;
+
+==================================================================================
+
+- To create a relation (table) with specific columns:
+
+R2016 = FOREACH Rate_PUF_2016_Sample GENERATE BusinessYear, StateCode, PlanId, Tobacco, Age, IndividualRate, IndividualTobaccoRate;
+
+DUMP R2016;
+
+==================================================================================
+
+- Group and flatten to group up by state and age group (for IndividualRates):
+
+grp_as = GROUP R2016 BY (StateCode, Age);
+grp_as_rate = FOREACH grp_as GENERATE FLATTEN(group) as (StateCode, Age), R2016.IndividualRate as IndividualRates;
+avg_as_rate = FOREACH grp_as_rate GENERATE Age, StateCode, AVG(IndividualRates) as avg;
+DUMP avg_as_rate;
+
+
+==================================================================================
+
+- store the output
+
+STORE avg_as_rate INTO 'avg_as_rate' using PigStorage(',');
+
+
+==================================================================================
+
+- Group and flatten to group up by state and age group (for IndividualTobaccoRates):
+
+grp_as = GROUP R2016 BY (StateCode, Age);
+grp_as_rate = FOREACH grp_as GENERATE FLATTEN(group) as (StateCode, Age), R2016.IndividualTobaccoRate as IndividualTobaccoRates;
+avg_as_rate_t = FOREACH grp_as_rate GENERATE Age, StateCode, AVG(IndividualTobaccoRates) as avg;
+DUMP avg_as_rate_t;
+
+==================================================================================
+
+- store the output
+
+STORE avg_as_rate INTO 'avg_as_rate' using PigStorage(',');
+
+
+==================================================================================
