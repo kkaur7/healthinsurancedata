@@ -1,0 +1,256 @@
+- download files:
+
+wget -O rate-puf_2014.zip http://download.cms.gov/marketplace-puf/rate-puf.zip
+
+wget -O rate-puf_2015.zip http://download.cms.gov/marketplace-puf/rate-puf.zip
+
+wget -O rate-puf_2016.zip http://download.cms.gov/marketplace-puf/2016/rate-puf.zip
+
+wget -O network-2014.zip http://download.cms.gov/marketplace-puf/2014/network-puf.zip
+============================================
+
+- Unzip files:
+
+unzip rate-puf_2014.zip
+
+unzip rate-puf_2015.zip
+
+unzip rate-puf_2016.zip
+
+unzip network-2014.zip
+
+============================================
+
+- uploading files to hDFS:
+
+hdfs dfs -mkdir projectfile
+hdfs dfs -mkdir projectfile/2014
+hdfs dfs -mkdir projectfile/2014/rate/Rate_puf2014
+hdfs dfs -put Rate_PUF2014.csv projectfile/2014/rate/Rate_puf2014
+hdfs dfs -ls projectfile/2014/rate/Rate_puf2014
+
+hdfs dfs -mkdir projectfile/2014
+hdfs dfs -mkdir projectfile/2014/net
+
+hdfs dfs -put Network_PUF.csv projectfile/2014/net
+
+hdfs dfs -mkdir projectfile/2015
+hdfs dfs -mkdir projectfile/2015/rate
+
+hdfs dfs -put Rate_PUF2015.csv projectfile/2015/rate
+
+============================================
+
+-Create Sample Tables:
+
+CREATE EXTERNAL TABLE IF NOT EXISTS rate2014(
+BusinessYear string,
+StateCode string,
+IssuerId string,
+SourceName string,
+VersionNum string,
+ImportDate string,
+IssuerId2 string,
+FederalTIN string,
+RateEffectiveDate string,
+RateExpirationDate string,
+PlanId string,
+RatingAreaId string,
+Tobacco string,
+Age string,
+IndividualRate int,
+IndividualTobaccoRate int,
+Couple int,
+PrimarySubscriberAndOneDependent int,
+PrimarySubscriberAndTwoDependents int,
+PrimarySubscriberAndThreeOrMoreDependents int,
+coupleAndOneDependent int,
+CoupleAndTwoDependents int,
+CoupleAndThreeOrMoreDependents int,
+RowNumber string
+ )
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE LOCATION '/user/sskk04/projectfile/2014/rate/Rate_puf2014'
+TBLPROPERTIES ('skip.header.line.count'='2');
+
+
+CREATE EXTERNAL TABLE IF NOT EXISTS rate2015(
+BusinessYear string,
+StateCode string,
+IssuerId string,
+SourceName string,
+VersionNum string,
+ImportDate string,
+IssuerId2 string,
+FederalTIN string,
+RateEffectiveDate string,
+RateExpirationDate string,
+PlanId string,
+RatingAreaId string,
+Tobacco string,
+Age string,
+IndividualRate int,
+IndividualTobaccoRate int,
+Couple int,
+PrimarySubscriberAndOneDependent int,
+PrimarySubscriberAndTwoDependents int,
+PrimarySubscriberAndThreeOrMoreDependents int,
+coupleAndOneDependent int,
+CoupleAndTwoDependents int,
+CoupleAndThreeOrMoreDependents int,
+RowNumber string
+ )
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE LOCATION '/user/sskk04/projectfile/2015/rate'
+TBLPROPERTIES ('skip.header.line.count'='2');
+
+
+
+
+============================================
+
+Create tables with data needed from rate2014 :
+
+CREATE TABLE r2014 As
+select BusinessYear, StateCode, PlanId, Tobacco, Age, IndividualRate, IndividualTobaccoRate 
+from rate2014;
+
+CREATE TABLE r2015 As
+select BusinessYear, StateCode, PlanId, Tobacco, Age, IndividualRate, IndividualTobaccoRate 
+from rate2015;
+
+=============================================
+
+--Create Network table:
+
+CREATE TABLE IF NOT EXISTS net2014(
+BusinessYear string,
+StateCode string,
+IssuerId string,
+SourceName string,
+VersionNum string,
+ImportDate string,
+IssuerId2 string,
+StateCode2 string,
+NetworkName string,
+NetworkId string,
+NetworkURL string,
+RowNumber string,
+MarketCoverage string,
+DentalOnly string
+)
+
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE LOCATION '/user/sskk04/projectfile/2014/net'
+TBLPROPERTIES ('skip.header.line.count'='2');
+
+================================================
+
+--create table for needed data from net2014:
+
+CREATE TABLE n2014 As
+select BusinessYear, StateCode, IssuerId, NetworkName, DentalOnly
+from net2014;
+
+
+=============================================
+
+
+--Query1. calculate average group by Statecode and age
+
+SELECT Statecode,age, avg(IndividualRate) FROM r2014 GROUP BY Statecode,age;
+
+SELECT Statecode,age, avg(IndividualRate) FROM r2015 GROUP BY Statecode,age;
+
+
+
+===============================================
+
+--Create table for visualization of query 1
+
+Create table avgout2014 As 
+Select Statecode, age, avg(IndividualRate) FROM r2014 GROUP BY Statecode,age;
+
+Create table avgout2015 As 
+Select Statecode, age, avg(IndividualRate) FROM r2014 GROUP BY Statecode,age;
+
+
+===================================================================
+
+--Put the output in a location in under the username:
+
+INSERT OVERWRITE LOCAL DIRECTORY '/home/maldarr/temp' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM avgout2014;
+
+
+INSERT OVERWRITE LOCAL DIRECTORY '/home/maldarr/temp' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM avgout2015;
+
+
+=======================================================================
+
+--visualization of query 2 rate and providers of a particular state and particular agegroup:
+
+Create table pro2014 As
+select NetworkName, IndividualRate from r2014
+JOIN n2014 ON( r2014.issuerId = n2014.issuerId)
+where r2014.statecode ="FL" and r2014.age = "25";
+
+create table proout2014 As
+SELECT NetworkName, avg(IndividualRate) FROM pro2014 GROUP BY NetworkName;
+
+--Put the output in a location in under the username:
+
+
+INSERT OVERWRITE LOCAL DIRECTORY '/home/maldarr/temp/3' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM proout2014;
+
+
+
+
+
+============================================================================
+
+--visualization of rates provided by different providers for dental benefits only:
+
+CREATE TABLE n2014_dent As
+select BusinessYear, StateCode, IssuerId, NetworkName, DentalOnly
+from net2014 
+where DentalOnly = "Yes";
+
+
+Create table pro2014_dental As
+select NetworkName, IndividualRate from r2014
+JOIN n2014_dent ON ( r2014.issuerId = n2014_dent.issuerId)
+where r2014.statecode ="VA" and r2014.age = "25";
+
+create table d2014 As
+SELECT NetworkName, avg(IndividualRate) FROM pro2014_dental GROUP BY NetworkName;
+
+INSERT OVERWRITE LOCAL DIRECTORY '/home/maldarr/temp/4' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM d2014;
+
+
+
+===========================================================================
+
+
+
+
+
+
+How to connect database to cluster:
+
+In excel file-> New-> data-> New query-> From other Source-> From ODBC
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
